@@ -6,7 +6,8 @@ import {
   PackingResult,
   PalletConfig,
   PalletTypeSummary,
-  PlacedPallet
+  PlacedPallet,
+  LoadingSequenceStrategy
 } from '../types/logistics';
 import { calculateCbm } from './containerStorage';
 
@@ -32,7 +33,8 @@ export function optimizePalletPacking(
   palletInput: PalletConfig | PalletConfig[],
   container: ContainerDef,
   customMaxHeightMm?: number,
-  targetPalletCount?: number
+  targetPalletCount?: number,
+  loadingStrategy: LoadingSequenceStrategy = 'priority_order'
 ): PackingResult {
   const palletList: PalletConfig[] = Array.isArray(palletInput)
     ? palletInput.filter(p => p.quantity > 0 || palletInput.length === 1)
@@ -44,7 +46,7 @@ export function optimizePalletPacking(
   }
 
   // Multi-Pallet Mixed Cargo Solver
-  return optimizeMultiPalletTypes(palletList, container, customMaxHeightMm);
+  return optimizeMultiPalletTypes(palletList, container, customMaxHeightMm, loadingStrategy);
 }
 
 /**
@@ -365,7 +367,8 @@ function optimizeSinglePalletType(
     maxLoadingHeightMm: effectiveMaxH,
     actualMaxCargoHeightMm,
     verticalClearanceMm,
-    isHeightExceeded
+    isHeightExceeded,
+    loadingStrategy: 'priority_order'
   };
 }
 
@@ -375,7 +378,8 @@ function optimizeSinglePalletType(
 function optimizeMultiPalletTypes(
   palletList: PalletConfig[],
   container: ContainerDef,
-  customMaxHeightMm?: number
+  customMaxHeightMm?: number,
+  loadingStrategy: LoadingSequenceStrategy = 'priority_order'
 ): PackingResult {
   const cLength = container.innerLengthMm;
   const cWidth = container.innerWidthMm;
@@ -385,28 +389,52 @@ function optimizeMultiPalletTypes(
     ? Math.min(cHeight, customMaxHeightMm)
     : (container.maxLoadingHeightMm || cHeight);
 
-  // Flatten items into unit queues, sorted by weight (heavy first on floor) and footprint
+  // Flatten items into unit queues, tracking loading priority
   const itemsToPack: {
     config: PalletConfig;
     unitIndex: number;
     weightKg: number;
     cbm: number;
+    priority: number;
   }[] = [];
 
-  for (const p of palletList) {
+  palletList.forEach((p, idx) => {
     const qty = Math.max(1, p.quantity);
+    const priority = p.loadingPriority ?? (idx + 1);
     for (let q = 0; q < qty; q++) {
       itemsToPack.push({
         config: p,
         unitIndex: q + 1,
         weightKg: Math.max(1, p.totalWeightKg),
-        cbm: p.cbmPerPallet > 0 ? p.cbmPerPallet : calculateCbm(p.lengthMm, p.widthMm, p.heightMm)
+        cbm: p.cbmPerPallet > 0 ? p.cbmPerPallet : calculateCbm(p.lengthMm, p.widthMm, p.heightMm),
+        priority
       });
     }
-  }
+  });
 
-  // Sort heavier first for structural stability on container floor
-  itemsToPack.sort((a, b) => b.weightKg - a.weightKg);
+  // Sort queue according to chosen loading strategy
+  if (loadingStrategy === 'priority_order') {
+    // 1, 2, 3... - Priority 1 goes deepest into the cont first!
+    itemsToPack.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      return b.weightKg - a.weightKg;
+    });
+  } else if (loadingStrategy === 'lifo_reverse') {
+    // LIFO (Dỡ hàng trước): Priority 1 dỡ trước nên được xếp sau cùng (gần cửa cont)
+    itemsToPack.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return b.priority - a.priority;
+      }
+      return b.weightKg - a.weightKg;
+    });
+  } else if (loadingStrategy === 'volume_first') {
+    itemsToPack.sort((a, b) => b.cbm - a.cbm);
+  } else {
+    // heavy_first
+    itemsToPack.sort((a, b) => b.weightKg - a.weightKg);
+  }
 
   const placedPallets: PlacedPallet[] = [];
   let currentTotalWeight = 0;
@@ -509,7 +537,8 @@ function optimizeMultiPalletTypes(
         heightMm: item.config.heightMm,
         weightKg: item.weightKg,
         rotated: bestRowFit.orient.rotated,
-        color: item.config.color || '#3b82f6'
+        color: item.config.color || '#3b82f6',
+        loadingPriority: item.priority
       };
 
       placedPallets.push(placed);
@@ -561,7 +590,8 @@ function optimizeMultiPalletTypes(
             heightMm: cfg.heightMm,
             weightKg: item.weightKg,
             rotated: slot.pallet.rotated,
-            color: cfg.color || '#10b981'
+            color: cfg.color || '#10b981',
+            loadingPriority: item.priority
           };
 
           placedPallets.push(placed2);
@@ -602,7 +632,7 @@ function optimizeMultiPalletTypes(
   });
 
   // Calculate summaries for each pallet batch
-  const palletsSummary: PalletTypeSummary[] = palletList.map(p => {
+  const palletsSummary: PalletTypeSummary[] = palletList.map((p, idx) => {
     const placedThisType = placedPallets.filter(item => item.palletTypeId === p.id);
     const cbmOne = p.cbmPerPallet > 0 ? p.cbmPerPallet : calculateCbm(p.lengthMm, p.widthMm, p.heightMm);
     return {
@@ -612,7 +642,8 @@ function optimizeMultiPalletTypes(
       requestedQty: p.quantity,
       placedQty: placedThisType.length,
       cbm: Math.round(placedThisType.length * cbmOne * 1000) / 1000,
-      weightKg: placedThisType.reduce((sum, item) => sum + item.weightKg, 0)
+      weightKg: placedThisType.reduce((sum, item) => sum + item.weightKg, 0),
+      loadingPriority: p.loadingPriority ?? (idx + 1)
     };
   });
 
@@ -653,6 +684,14 @@ function optimizeMultiPalletTypes(
 
   const totalRequested = palletList.reduce((sum, p) => sum + p.quantity, 0);
 
+  const strategyLabel = loadingStrategy === 'priority_order'
+    ? `Theo thứ tự ưu tiên 1, 2, 3... (${palletList.length} lô)`
+    : loadingStrategy === 'lifo_reverse'
+      ? `Theo thứ tự dỡ hàng LIFO (${palletList.length} lô)`
+      : loadingStrategy === 'volume_first'
+        ? `Ưu tiên kiện lớn trước (${palletList.length} lô)`
+        : `Ưu tiên nặng xếp trước (${palletList.length} lô)`;
+
   return {
     placedPallets,
     palletsSummary,
@@ -668,12 +707,13 @@ function optimizeMultiPalletTypes(
     axleDistribution,
     bayWeights,
     unplacedCount: Math.max(0, totalRequested - totalPallets),
-    arrangementName: `Xếp nhiều loại pallet (${palletList.length} lô hàng kết hợp)`,
+    arrangementName: `Xếp ${strategyLabel}`,
     dunnageRecommendations,
     maxLoadingHeightMm: effectiveMaxH,
     actualMaxCargoHeightMm,
     verticalClearanceMm,
-    isHeightExceeded
+    isHeightExceeded,
+    loadingStrategy
   };
 }
 

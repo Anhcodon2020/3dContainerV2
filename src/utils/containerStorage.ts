@@ -1,4 +1,4 @@
-import { ContainerDef, PalletConfig, PalletStandard } from '../types/logistics';
+import { ContainerDef, PalletConfig, PalletStandard, CustomPalletTemplate } from '../types/logistics';
 
 export const STANDARD_CONTAINERS: ContainerDef[] = [
   {
@@ -328,4 +328,144 @@ export function loadSavedPalletConfig(): PalletConfig {
 
 export function savePalletConfig(config: PalletConfig): void {
   savePalletList([config]);
+}
+
+const STORAGE_KEY_PALLET_TEMPLATES = 'optiload_pallet_templates_v1';
+
+export const DEFAULT_PALLET_TEMPLATES: CustomPalletTemplate[] = [
+  {
+    id: 'tpl-carton-1100',
+    name: 'Pallet Thùng Carton Tiêu Chuẩn (1.1 x 1.1m)',
+    standardType: 'asia',
+    lengthMm: 1100,
+    widthMm: 1100,
+    heightMm: 1400,
+    palletTareKg: 20,
+    cargoWeightKg: 480,
+    totalWeightKg: 500,
+    cbmPerPallet: 1.694,
+    allowRotate: true,
+    maxTiers: 1,
+    color: '#3b82f6',
+    description: 'Thùng carton nhẹ xuất khẩu Châu Á, hàng thực phẩm, tiêu dùng',
+    createdAt: 1700000000000
+  },
+  {
+    id: 'tpl-gma-heavy',
+    name: 'Pallet Hàng Xuất Khẩu Mỹ GMA (1.22 x 1.02m)',
+    standardType: 'iso_gma',
+    lengthMm: 1219,
+    widthMm: 1016,
+    heightMm: 1500,
+    palletTareKg: 23,
+    cargoWeightKg: 700,
+    totalWeightKg: 723,
+    cbmPerPallet: 1.858,
+    allowRotate: true,
+    maxTiers: 1,
+    color: '#10b981',
+    description: 'Quy chuẩn đóng hàng đi Hoa Kỳ (Grocery Manufacturers Assoc)',
+    createdAt: 1700000001000
+  },
+  {
+    id: 'tpl-mech-1210',
+    name: 'Pallet Cơ Khí - Phụ Tùng Nặng (1.2 x 1.0m)',
+    standardType: 'eur2',
+    lengthMm: 1200,
+    widthMm: 1000,
+    heightMm: 1150,
+    palletTareKg: 30,
+    cargoWeightKg: 950,
+    totalWeightKg: 980,
+    cbmPerPallet: 1.38,
+    allowRotate: true,
+    maxTiers: 2,
+    color: '#f59e0b',
+    description: 'Khối lượng nặng, đế gỗ chắc chắn, có thể xếp 2 tầng nếu tải cho phép',
+    createdAt: 1700000002000
+  },
+  {
+    id: 'tpl-light-2tier',
+    name: 'Pallet Hàng Nhẹ Xếp 2 Tầng (1.2 x 0.8m)',
+    standardType: 'eur1',
+    lengthMm: 1200,
+    widthMm: 800,
+    heightMm: 1100,
+    palletTareKg: 25,
+    cargoWeightKg: 250,
+    totalWeightKg: 275,
+    cbmPerPallet: 1.056,
+    allowRotate: true,
+    maxTiers: 2,
+    color: '#8b5cf6',
+    description: 'Pallet chiều cao thấp tối ưu xếp chồng 2 tầng trong container cao HC',
+    createdAt: 1700000003000
+  }
+];
+
+export function loadCustomPalletTemplates(): CustomPalletTemplate[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_PALLET_TEMPLATES);
+    if (saved) {
+      const parsed: CustomPalletTemplate[] = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load pallet templates', err);
+  }
+  return DEFAULT_PALLET_TEMPLATES;
+}
+
+export function saveCustomPalletTemplate(
+  templateData: Omit<CustomPalletTemplate, 'id' | 'createdAt'> & { id?: string }
+): CustomPalletTemplate {
+  const currentList = loadCustomPalletTemplates();
+  const cbm = templateData.cbmPerPallet || calculateCbm(templateData.lengthMm, templateData.widthMm, templateData.heightMm);
+  const totalWeight = templateData.totalWeightKg || (templateData.palletTareKg + templateData.cargoWeightKg);
+
+  if (templateData.id) {
+    const updatedList = currentList.map(item =>
+      item.id === templateData.id
+        ? {
+            ...item,
+            ...templateData,
+            cbmPerPallet: cbm,
+            totalWeightKg: totalWeight
+          }
+        : item
+    );
+    try {
+      localStorage.setItem(STORAGE_KEY_PALLET_TEMPLATES, JSON.stringify(updatedList));
+    } catch (e) {
+      console.error(e);
+    }
+    return updatedList.find(i => i.id === templateData.id)!;
+  } else {
+    const newTpl: CustomPalletTemplate = {
+      ...templateData,
+      id: `tpl-user-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      cbmPerPallet: cbm,
+      totalWeightKg: totalWeight,
+      createdAt: Date.now()
+    };
+    const updatedList = [newTpl, ...currentList];
+    try {
+      localStorage.setItem(STORAGE_KEY_PALLET_TEMPLATES, JSON.stringify(updatedList));
+    } catch (e) {
+      console.error(e);
+    }
+    return newTpl;
+  }
+}
+
+export function deleteCustomPalletTemplate(id: string): void {
+  try {
+    const currentList = loadCustomPalletTemplates();
+    const updated = currentList.filter(item => item.id !== id);
+    localStorage.setItem(STORAGE_KEY_PALLET_TEMPLATES, JSON.stringify(updated));
+  } catch (err) {
+    console.error('Failed to delete pallet template', err);
+  }
 }

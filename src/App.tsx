@@ -10,10 +10,11 @@ import { SidebarConfig } from './components/SidebarConfig';
 import { ThreeScene, CameraPreset, ContainerViewMode } from './components/ThreeCanvas/ThreeScene';
 import { ControlDock } from './components/ControlDock';
 import { ContainerManagerModal } from './components/ContainerManagerModal';
+import { CustomPalletModal } from './components/CustomPalletModal';
 import { LoadPlanReportModal } from './components/LoadPlanReportModal';
 import { GuideModal } from './components/GuideModal';
 import { GitExportModal } from './components/GitExportModal';
-import { ContainerDef, PalletConfig, PalletStandard, PlacedPallet } from './types/logistics';
+import { ContainerDef, PalletConfig, PalletStandard, PlacedPallet, LoadingSequenceStrategy } from './types/logistics';
 import {
   loadAllContainers,
   saveCustomContainer,
@@ -51,17 +52,21 @@ export default function App() {
   // Maximum cargo loading height override (mm)
   const [customMaxHeightMm, setCustomMaxHeightMm] = useState<number | undefined>(undefined);
 
+  // Loading Sequence Strategy (1, 2, 3... order, heavy first, LIFO reverse, volume first)
+  const [loadingStrategy, setLoadingStrategy] = useState<LoadingSequenceStrategy>('priority_order');
+
   // 2. Compute Packing Optimization & Balance Result across all pallets
   const packingResult = useMemo(() => {
     if (!activeContainer) {
-      return optimizePalletPacking(pallets, containers[0], customMaxHeightMm);
+      return optimizePalletPacking(pallets, containers[0], customMaxHeightMm, undefined, loadingStrategy);
     }
-    return optimizePalletPacking(pallets, activeContainer, customMaxHeightMm);
-  }, [pallets, activeContainer, customMaxHeightMm]);
+    return optimizePalletPacking(pallets, activeContainer, customMaxHeightMm, undefined, loadingStrategy);
+  }, [pallets, activeContainer, customMaxHeightMm, loadingStrategy]);
 
   // 3. UI State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isContainerManagerOpen, setIsContainerManagerOpen] = useState(false);
+  const [isCustomPalletModalOpen, setIsCustomPalletModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
   const [isGitModalOpen, setIsGitModalOpen] = useState(false);
@@ -110,6 +115,23 @@ export default function App() {
     setIsSidebarOpen(true);
   }, [pallets, updatePalletsList]);
 
+  // Add custom pallet with user-defined dimensions and weights
+  const handleAddCustomPallet = useCallback((newPallet: PalletConfig) => {
+    const updated = [...pallets, newPallet];
+    updatePalletsList(updated);
+    setActivePalletId(newPallet.id);
+    setIsSidebarOpen(true);
+    try {
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.75 }
+      });
+    } catch {
+      // ignore
+    }
+  }, [pallets, updatePalletsList]);
+
   // Delete pallet batch
   const handleDeletePallet = useCallback((id: string) => {
     if (pallets.length <= 1) return;
@@ -150,6 +172,26 @@ export default function App() {
         return next;
       }
       return prev;
+    });
+  }, []);
+
+  // Reorder pallets sequence (Move up / Move down in loading sequence 1, 2, 3...)
+  const handleReorderPallets = useCallback((fromIndex: number, toIndex: number) => {
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= pallets.length || toIndex >= pallets.length) return;
+    const reordered = [...pallets];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    // Automatically reassign sequential loadingPriority 1, 2, 3...
+    const updated = reordered.map((p, idx) => ({ ...p, loadingPriority: idx + 1 }));
+    updatePalletsList(updated);
+  }, [pallets, updatePalletsList]);
+
+  // Change individual pallet priority number directly
+  const handleChangePalletPriority = useCallback((palletId: string, priority: number) => {
+    setPallets(prev => {
+      const next = prev.map(p => p.id === palletId ? { ...p, loadingPriority: Math.max(1, priority) } : p);
+      savePalletList(next);
+      return next;
     });
   }, []);
 
@@ -240,6 +282,7 @@ export default function App() {
         onOpenGuideModal={() => setIsGuideModalOpen(true)}
         onOpenGitModal={() => setIsGitModalOpen(true)}
         onAddPallet={() => handleAddPallet('eur1')}
+        onOpenCustomPalletModal={() => setIsCustomPalletModalOpen(true)}
         onAutoFillContainer={handleAutoFillContainer}
       />
 
@@ -280,6 +323,11 @@ export default function App() {
         onOpenContainerManager={() => setIsContainerManagerOpen(true)}
         customMaxHeightMm={customMaxHeightMm}
         onCustomMaxHeightChange={setCustomMaxHeightMm}
+        onOpenCustomPalletModal={() => setIsCustomPalletModalOpen(true)}
+        loadingStrategy={loadingStrategy}
+        onChangeLoadingStrategy={setLoadingStrategy}
+        onReorderPallets={handleReorderPallets}
+        onChangePalletPriority={handleChangePalletPriority}
       />
 
       {/* Sleek Collapsible Bottom Control Dock (Three.js skill directive) */}
@@ -312,6 +360,14 @@ export default function App() {
         onSaveContainer={handleSaveContainer}
         onDeleteContainer={handleDeleteContainer}
         onResetDefaults={handleResetDefaults}
+      />
+
+      {/* Modal 1.5: Custom Pallet Creator & Template Manager */}
+      <CustomPalletModal
+        isOpen={isCustomPalletModalOpen}
+        onClose={() => setIsCustomPalletModalOpen(false)}
+        onAddCustomPallet={handleAddCustomPallet}
+        maxLoadingHeightMm={packingResult.maxLoadingHeightMm}
       />
 
       {/* Modal 2: Packing Plan & Weight Balance Report Manifest */}

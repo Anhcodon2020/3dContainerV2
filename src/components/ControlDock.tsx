@@ -122,6 +122,11 @@ export const ControlDock: React.FC<ControlDockProps> = ({
               {activePallet.palletTypeName && (
                 <span className="text-blue-300 font-medium">({activePallet.palletTypeName})</span>
               )}
+              {activePallet.loadingPriority && (
+                <span className="px-1.5 py-0.5 bg-cyan-950 text-cyan-300 rounded text-[10px] font-mono font-bold border border-cyan-800">
+                  Thứ tự #{activePallet.loadingPriority}
+                </span>
+              )}
               <span className="text-slate-500">•</span>
               <span>Khoang {activePallet.bayIndex}</span>
               <span className="text-slate-500">•</span>

@@ -24,6 +24,7 @@ interface HeaderProps {
   onOpenGuideModal: () => void;
   onOpenGitModal?: () => void;
   onAddPallet?: () => void;
+  onOpenCustomPalletModal?: () => void;
   onAutoFillContainer?: () => void;
 }
 
@@ -38,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenGuideModal,
   onOpenGitModal,
   onAddPallet,
+  onOpenCustomPalletModal,
   onAutoFillContainer
 }) => {
   const cogStatus = packingResult.centerOfGravity.status;
@@ -137,14 +139,25 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Action Buttons */}
       <div className="flex items-center gap-2">
+        {onOpenCustomPalletModal && (
+          <button
+            onClick={onOpenCustomPalletModal}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-md transition-colors cursor-pointer"
+            title="Nhập riêng một loại pallet mới với số đo và số kg tự chọn"
+          >
+            <Boxes className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">+ Nhập Riêng Pallet Mới</span>
+          </button>
+        )}
+
         {onAddPallet && (
           <button
             onClick={onAddPallet}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 text-blue-300 text-xs font-semibold transition-colors cursor-pointer"
-            title="Thêm thêm một lô pallet mới vào container"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-blue-300 text-xs font-semibold transition-colors cursor-pointer"
+            title="Thêm nhanh một lô pallet EUR 1 vào container"
           >
             <PlusCircle className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden sm:inline">+ Thêm Pallet</span>
+            <span className="hidden md:inline">Thêm nhanh EUR1</span>
           </button>
         )}
 

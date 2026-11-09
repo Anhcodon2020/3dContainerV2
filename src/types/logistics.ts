@@ -21,6 +21,7 @@ export interface PalletConfig {
   maxTiers: number;      // Số tầng xếp chồng cho phép (1 hoặc 2 hoặc 3)
   color: string;         // Màu nhận diện trên 3D
   quantity: number;      // Số lượng pallet loại này cần xếp vào container
+  loadingPriority?: number; // Thứ tự ưu tiên đóng hàng (1 = đóng trước sâu trong cont, 2, 3...)
   boxDetail?: {
     enabled: boolean;
     boxLengthMm: number;
@@ -30,6 +31,24 @@ export interface PalletConfig {
     layers: number;
     totalBoxes: number;
   };
+}
+
+export interface CustomPalletTemplate {
+  id: string;
+  name: string;
+  standardType?: PalletStandard;
+  lengthMm: number;
+  widthMm: number;
+  heightMm: number;
+  palletTareKg: number;
+  cargoWeightKg: number;
+  totalWeightKg: number;
+  cbmPerPallet: number;
+  allowRotate: boolean;
+  maxTiers: number;
+  color: string;
+  description?: string;
+  createdAt?: number;
 }
 
 export type ContainerType = 'standard' | 'custom';
@@ -70,7 +89,14 @@ export interface PlacedPallet {
   weightKg: number;     // Trọng lượng pallet
   rotated: boolean;     // Có xoay 90 độ hay không
   color: string;
+  loadingPriority?: number; // Thứ tự ưu tiên đóng hàng (1, 2, 3...)
 }
+
+export type LoadingSequenceStrategy =
+  | 'priority_order' // Theo thứ tự đóng hàng chỉ định (1, 2, 3...)
+  | 'heavy_first'    // Hàng nặng xếp trước (ổn định trọng tâm)
+  | 'volume_first'   // Kiện lớn xếp trước (tối ưu mặt sàn)
+  | 'lifo_reverse';  // Dỡ hàng trước (Pallet cần lấy sớm xếp sát cửa cont)
 
 export interface CenterOfGravity {
   xMm: number;           // Vị trí trọng tâm theo chiều dài (mm)
@@ -109,6 +135,7 @@ export interface PalletTypeSummary {
   placedQty: number;
   cbm: number;
   weightKg: number;
+  loadingPriority?: number;
 }
 
 export interface PackingResult {
@@ -132,4 +159,5 @@ export interface PackingResult {
   actualMaxCargoHeightMm: number;    // Chiều cao đỉnh hàng thực tế cao nhất (mm)
   verticalClearanceMm: number;       // Khoảng sáng nóc còn lại (mm)
   isHeightExceeded: boolean;         // Có bị vượt chiều cao khống chế hay không
+  loadingStrategy?: LoadingSequenceStrategy; // Chiến lược thứ tự đóng hàng
 }

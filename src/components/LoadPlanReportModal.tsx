@@ -223,6 +223,7 @@ export const LoadPlanReportModal: React.FC<LoadPlanReportModalProps> = ({
                 {palletList.map((p, idx) => {
                   const summary = packingResult.palletsSummary?.find(s => s.palletId === p.id);
                   const placedQty = summary?.placedQty ?? 0;
+                  const priority = p.loadingPriority ?? (idx + 1);
                   return (
                     <div key={p.id} className="p-2 bg-slate-50 border border-slate-100 rounded-lg text-[11px] font-mono">
                       <div className="flex items-center justify-between font-bold text-slate-900 mb-1">
@@ -232,6 +233,9 @@ export const LoadPlanReportModal: React.FC<LoadPlanReportModalProps> = ({
                             style={{ backgroundColor: p.color }}
                           />
                           <span>{p.name}</span>
+                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] rounded font-semibold border border-blue-200">
+                            Thứ tự đóng #{priority}
+                          </span>
                         </div>
                         <span className="text-blue-700">
                           {placedQty} / {p.quantity} kiện
@@ -240,7 +244,7 @@ export const LoadPlanReportModal: React.FC<LoadPlanReportModalProps> = ({
                       <div className="flex justify-between text-slate-600 text-[10px]">
                         <span>KT: {p.lengthMm}x{p.widthMm}x{p.heightMm}mm</span>
                         <span>CBM: {p.cbmPerPallet} m³</span>
-                        <span>{p.totalWeightKg} kg/kiện</span>
+                        <span>{p.totalWeightKg} kg/kiện (hàng {p.cargoWeightKg}kg + đế {p.palletTareKg}kg)</span>
                       </div>
                     </div>
                   );
